@@ -1,0 +1,363 @@
+---
+title: "Descriptive Statistic Analysis of Texas Real Estate"
+author: "Pasquale Nisi"
+date: "2024-02-12"
+output:
+  html_document:
+    theme: united
+    toc: true
+    toc_float:
+      collapsed: true
+  pdf_document:
+    toc: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+We start by importing the packages we need for thin analysis:
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(moments)
+library(stringr)
+```
+
+Now we are ready to import the dataset and have a glimpse of the first line:
+
+```{r}
+texas <- read.csv("Real Estate Texas.csv")
+head(texas, 5)
+```
+
+The object created after this passage is a Dataframe of 8 variables with a total of 240 observation. In particular, the variables can be described as:
+
+-   **city**: (`Character`) *Qualitative nominal variable*. Reference city;
+-   **year**: (`Integer`) *Categorical variable* with 5 levels. Reference year;
+-   **month**: (`Integer`) *Categorical variables* with 12 levels. Reference month;
+-   **sales**: (`Integer`) *Quantitative discrete variable*. Total number of sales;
+-   **volume**: (`Integer`) *Quantitative discrete variable*. Total value of Sales (in M\$);
+-  **median_price**: (`Numeric`) *Quantitative continuous variable*. Median sale price (in \$);
+-   **listings**: (`Numeric`) *Quantitative continuous variable*. Total number of active listings;
+-   **months_inventory**: (`Numeric`) *Quantitative continuous variable*. Time (in months) required to sell all listings at current rate.
+
+We start our analysis by computing **position**,**variation** and **shape indexes** for `sales`, `volume`, `median_price`, `listings` and `months_inventory` variables.
+
+First of all, define a new functon `v.coeff` to define variation coefficient, since there are no function included for this purpose in base R and the packages we've imported:
+
+```{r}
+v.coeff <- function(x){
+  return(sd(x)/mean(x)*100)
+}
+```
+
+Then can be useful to define a new Dataframe `indexes.df` where we'll insert all indexes we needed. Let's use `attach()` for easy access to variables in original Dataframe:
+
+```{r}
+attach(texas)
+
+texas.colnames <- colnames(texas)[4:8]
+indexes = c("min", "1st quartile", "median", "3rd quartile", "max", "range",
+            "IQR", "mean", "std.dev", "var.coeff", "skewness", "kurtosis")
+indexes.df <- data.frame(matrix(nrow = 0, ncol = length(indexes)))
+colnames(indexes.df) = indexes
+for (obj.name in texas.colnames) {
+  obj <- pull(texas,obj.name)
+  quartiles = as.numeric(quantile(obj))
+  df <- texas %>%
+    summarise(range=max(obj)-min(obj),
+              IQR=IQR(obj),
+              mean=mean(obj),
+              dev.st=sd(obj),
+              var.coeff=v.coeff(obj),
+              skewness=skewness(obj),
+              kurtosis=kurtosis(obj)-3)
+  row = c(quartiles,as.numeric(df))
+  indexes.df <- rbind(indexes.df, row)
+}
+indexes.df <- cbind(texas.colnames,indexes.df)
+colnames(indexes.df) = c("variable", indexes)
+indexes.df
+```
+
+We can make some considerations on the outputs:
+
+-   `volume` has the highest variation coefficient, which means it has the **highest variation**;
+
+-   `volume` also has positive kurtosis, which means it is **leptokurtic**;
+
+-   All other variables have negative kurtosis, so thy are **platykurtic**;
+
+-   `median_price` has negative skewness, visible as a longer **left** tail;
+
+-   All other variables have positive skewness, visible as longer **right** tail;
+
+-   `volume` has the **highest skewness**.
+
+Now, we can pass to analyze `city` variables. Let's define a Distribution Frequency Table (DFT now on) for it:
+
+```{r}
+N = dim(texas)[1]
+ni = table(city)
+fi = ni/N
+city_freq_distr <- cbind(ni,fi)
+city_freq_distr
+```
+
+DFT shows a **quadrimodal distribution**, as frequencies are the same for all the cities. Since observation are uniformly distributed on the 4 categories, Gini Index for `city` is expected to be 1. Let's define `gini.index` function and test if it is true:
+
+```{r}
+gini.index <- function(x){
+  J <- length(table(x))
+  fi2 <- (table(x)/length(x))^2
+  G <- 1 - sum(fi2)
+  gini <- G / ((J-1)/J)
+  return(gini)
+}
+
+gini.index(city)
+```
+
+The hypotesis has benn verified.
+
+Next step is to divide `volume` variables in classes, then define DFT and Gini Index for it:
+
+```{r}
+volume_classes <- cut(volume,
+                      breaks = seq(min(volume), max(volume),
+                                   (max(volume)-min(volume))/15))
+
+ni <- table(volume_classes)
+fi <- ni/N
+Ni <- cumsum(ni)
+Fi <- Ni/N
+volume_freq_distr <- as.data.frame(cbind(ni,fi,Ni,Fi))
+volume_freq_distr
+
+gini.index(volume_classes)
+```
+
+We can also plot `volume_classes` frequency distribution through an histogram:
+
+```{r}
+barplot(volume_freq_distr$ni,
+        xlab = "",
+        ylab = "",
+        ylim = c(0,50),
+        main = "Volume classes frequencies",
+        col = "blue",
+        space = 0.1,
+        names.arg = rownames(volume_freq_distr),
+        las = 2)
+```
+
+Let's do some probability tests. First we can investigate the probabilities of **Beaumont** occurrencies. Since the distribution is quadrimodal, we can predict a result of .25:
+
+```{r}
+Beaumont_ext = filter(texas, city == "Beaumont")
+Beaumont_N = dim(Beaumont_ext)[1]
+Beaumont_prob = Beaumont_N/N
+Beaumont_prob
+```
+
+Now we can do the same with a month, i.e. **July** which is rapresented by **7** in the `month` variable:
+
+```{r}
+July_ext = filter(texas, month == 7)
+July_N = dim(July_ext)[1]
+July_prob = July_N/N
+July_prob
+```
+
+Further step is combining two variables, such as `month` (i.e. **December**) and `year` (i.e. **2012**):
+
+```{r}
+Dec12_ext = filter(texas, year == 2012, month == 12)
+Dec12_N = dim(Dec12_ext)[1]
+Dec12_prob = Dec12_N/N
+Dec12_prob
+```
+
+To make our Dataframe more complete we can add two new variables:
+
+-   `avg_price`: average price, defined as the ratio between `volume` (in \$) and `sales`;
+
+-   `sales_eff`: sales efficiency, which show the effectivness of sales offers, defined as the ratio between `sales` and `listings`.
+
+Let's make a new Dataframe `texas_complete` where we'll add theme to the original Dataframe:
+
+```{r}
+avg_price <- (volume*1000000)/sales
+sales_eff <- sales/listings
+texas_complete <- cbind(texas, avg_price, sales_eff)
+head(texas_complete, 5)
+```
+
+For the latter variable 1 represent the highest sales efficiency, 0 the lowest; Highest sales efficiency was observed in:
+
+-   2014
+
+-   Bryan-College Station
+
+-   Summer (June, July, August)
+
+
+We can also use `dplyr` package to summarizes some info from the Dataframe. Let's try it:
+
+```{r}
+texas_complete %>%
+  group_by(city) %>%
+  summarise(year = 2014, mean = mean(sales_eff),
+            std.dev = sd(sales_eff))
+```
+
+Visualization can be very useful during statistical analysis, in particular for making comparison.
+We can compare `median_price` among cities using boxplot:
+
+```{r}
+cities = unique(city)
+
+ggplot(data = texas_complete)+
+  geom_boxplot(aes(x=median_price/1000,
+                   y=city),
+               fill = "orange",
+               colour = "red",
+               outlier.colour = "red",
+               outlier.shape = 1,
+               outlier.size = 2.5,
+               linewidth = 0.75,
+               outlier.stroke = 0.75,
+  )+
+  scale_y_discrete(labels = cities)+
+  scale_x_continuous(breaks = seq(70,180,10), 
+                     guide = guide_axis(angle = 45))+
+  labs(x="Median sale price (k$)",
+       y="City",
+       title = "Median sale price per city")+
+  theme_minimal()+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+We can observe that **Bryan-College Station** has the highest median sale price, **Wichita Falls** the lowest. All cities have asymmetric distribution for `median_price`. **Tyler** is the only one without outliers.
+
+We can use boxplot also to compare `volume` among cities:
+
+```{r}
+ggplot(data = texas_complete)+
+  geom_boxplot(aes(x=volume,
+                   y=city,
+                   fill=factor(year)),)+
+  scale_fill_manual(
+    name = "Year",
+    breaks = factor(unique(year)),
+    values = c("lightblue", "lightblue1", "lightblue2",
+               "lightblue3", "lightblue4"),
+    labels = as.character(unique(year))
+  )+
+  scale_y_discrete(labels=cities)+
+  scale_x_continuous(breaks = seq(10,100,10))+
+  labs(x="Total value of sales (M$)",
+       y="City",
+       title = "Total value of sales per year")+
+  theme_minimal()+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+Here we can observe that:
+
+-   **Tyler** has the highest median of the total value of sales;
+
+-   **Wichita Falls** has the lowest median of the total values of sales;
+
+-   **Wichita Falls** is also almost constant, as opposed to the other cities.
+
+Histogram can be used to compare `Volume` among cities per month. First we use a **stacked** histogram:
+
+```{r}
+ggplot(data = texas_complete)+
+  geom_col(aes(x = factor(month.abb[month], levels = month.abb),
+               y = volume,
+               fill = city))+
+  labs(x = "Month",
+       y = "Total value of sales (M$)",
+       title = "Total value of sales per month")+
+  facet_wrap(~year,nrow = 1)+
+  scale_x_discrete(guide = guide_axis(angle = 90))+
+  scale_fill_discrete(name = "City",
+                      labels = cities)+
+  theme_minimal()+
+  theme(legend.position = "bottom",
+        axis.text.x = element_text(size = 6),
+        plot.title = element_text(hjust = 0.5))
+```
+
+Then we can use a **normalized** histogram:
+
+```{r}
+ggplot(data = texas_complete)+
+  geom_col(aes(x = factor(month.abb[month], levels = month.abb),
+               y = volume,
+               fill = city),
+           position = "fill")+
+  labs(x = "Month",
+       y = "Total value of sales (M$)",
+       title = "Total value of sales per month")+
+  facet_wrap(~year,nrow = 1)+
+  scale_x_discrete(guide = guide_axis(angle = 90))+
+  scale_fill_discrete(name = "City",
+                      labels = cities)+
+  theme_minimal()+
+  theme(legend.position = "bottom",
+        axis.text.x = element_text(size = 6),
+        plot.title = element_text(hjust = 0.5))
+```
+
+Total value of sales increases through the years, mainly by the contribution of **Tyler** total value of sales and **Bryan-College Station** median price as seen before.
+
+Last comparison we can perform is relative to `median_price` per month among cities through year. In this case, we'll use a line chart:
+
+```{r}
+ggplot(data = texas_complete)+
+  geom_line(aes(x = factor(month.abb[month], levels = month.abb),
+                y=median_price/1000,
+                group=city,
+                col=city),
+            lwd=1
+  )+
+  facet_wrap(~year, nrow = 1)+
+  scale_x_discrete(guide = guide_axis(angle = 90))+
+  scale_color_discrete(name = "City")+
+  labs(x="Month",
+       y="Median sale price (k$)",
+       title = "Median sale price per month")+
+  theme_minimal()+
+  theme(legend.position = "bottom",
+        axis.text.x = element_text(size = 6),
+        plot.title = element_text(hjust = 0.5))
+```
+
+It results that `median_price` stayed almost constant in **Beaumont** and **Wichita Falls**, while there was an increase in **Bryan-College Station** and **Tyler**, which contributes to the results seen before.
+
+Analyzing `sales` gives the same result, but more evident:
+
+```{r}
+ggplot(data = texas_complete)+
+  geom_line(aes(x = factor(month.abb[month], levels = month.abb),
+                y=sales,
+                group=city,
+                col=city),
+            lwd=1
+  )+
+  facet_wrap(~year, nrow = 1)+
+  scale_x_discrete(guide = guide_axis(angle = 90))+
+  scale_color_discrete(name = "City")+
+  labs(x="Month",
+       y="Sales",
+       title = "Sales per month")+
+  theme_minimal()+
+  theme(legend.position = "bottom",
+        axis.text.x = element_text(size = 6),
+        plot.title = element_text(hjust = 0.5))
+```

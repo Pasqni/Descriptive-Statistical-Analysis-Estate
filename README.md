@@ -1,4 +1,4 @@
-# Descriptive-Statistical-Analysis-Estate
+# Descriptive Statistical Analysis: Real Texas Estate
 This is a project concerning the exploratory data analysis of real estate market in Texas.
 
 The analysis was conducted using R and the output report is an HTML file obtained using RMarkdown. 
